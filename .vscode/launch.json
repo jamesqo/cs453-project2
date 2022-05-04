@@ -1,0 +1,49 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Run Sender",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceRoot}/ChatClientSender.py",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "args": [
+                "-s",
+                "localhost",
+                "-t",
+                "sample_input.txt",
+                "sample_output.txt"
+            ]
+        },
+        {
+            "name": "Run Receiver",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceRoot}/ChatClientReceiver.py",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "args": [
+                "-s",
+                "localhost"
+            ]
+        },
+        {
+            "type": "java",
+            "name": "Run Server",
+            "request": "launch",
+            "mainClass": "ChannelEmulator",
+            "args": [
+                "-L",
+                "0.0",
+                "-D",
+                "0",
+                "-C",
+                "0.0"
+            ]
+        }
+    ]
+}
