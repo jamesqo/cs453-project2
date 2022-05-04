@@ -63,10 +63,20 @@ def main():
 
     ## Send metadata about the file
 
-    metadata = '\n'.join([
+    file_contents = None
+    content_length = None
+    if source_file != 'stdin':
+        with open(source_file, 'rb', encoding='utf8') as f:
+            file_contents = f.read()
+            content_length = len(file_contents)
+
+    metadata = [
         f"source_file: {source_file}",
         f"dest_file: {dest_file}"
-    ])
+    ]
+    if content_length is not None:
+        metadata += [f"content_length: {content_length}"]
+    metadata = '\n'.join(metadata)
     sock.send(metadata)
 
     ## Send the contents of the file
@@ -81,8 +91,7 @@ def main():
                 break
     else:
         ## Send all of the contents at once
-        with open(source_file, 'rb') as f:
-            sock.send(f.read(), binary=True)
+        sock.send(file_contents, binary=True)
     
     ## Send a special message to indicate EOF
 
