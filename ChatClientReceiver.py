@@ -2,7 +2,6 @@ import argparse
 import sys
 
 from rdt_sock import RDTSocket
-from utils import *
 
 def parse_metadata(metadata_msg):
     lines = metadata_msg.splitlines()
@@ -18,19 +17,24 @@ def main():
     parser.add_argument('-p', dest='port_number', type=int, default=8888)
     args = parser.parse_args()
 
-    ## Create a UDP connection to (server_name, port_number)
-    sock = RDTSocket(args.server_name, args.port_number)
+    ## Create a connection socket for (server_name, port_number)
+    sock = RDTSocket(args.server_name, args.port_number, timeout=10)
 
-    sock.send("Hello, world!")
-    check_response(sock, "Hello, world!")
+    ## Oil check
+    sock.udt_send_and_wait(
+        "Hello, world!",
+        "Hello, world!"
+    )
 
     ## Name ourselves jlk-receiver
-    sock.send("NAME jlk-receiver")
-    check_response(sock, "OK Hello jlk-receiver\n")
+    sock.udt_send_and_wait(
+        "NAME jlk-receiver",
+        "OK Hello jlk-receiver\n"
+    )
 
     ## Wait for a message from jlk-sender
 
-    msg = sock.receive()
+    msg = sock.rdt_receive_text()
     metadata = parse_metadata(msg)
 
     ## Receive the contents of the file
@@ -43,9 +47,9 @@ def main():
     
     try:
         while True:
-            msg = sock.receive(binary=True)
+            msg = sock.rdt_receive_text()
 
-            if msg.decode() == EOF_MARKER:
+            if msg.decode() == "<EOF>":
                 break
 
             f.write(msg)
@@ -56,8 +60,10 @@ def main():
 
     ## Quit the session
 
-    sock.send("QUIT")
-    check_response(sock, "OK Bye\n")
+    sock.udt_send_and_wait(
+        "QUIT",
+        "OK Bye\n"
+    )
 
 if __name__ == '__main__':
     main()

@@ -1,8 +1,8 @@
 import argparse
+import socket
 import time
 
 from rdt_sock import RDTSocket
-from utils import *
 
 def parse_users(list_msg):
     PREFIX = "OK LIST = "
@@ -26,15 +26,20 @@ def main():
     parser.add_argument('-t', dest='filenames', nargs=2)
     args = parser.parse_args()
 
-    ## Create a UDP connection to (server_name, port_number)
-    sock = RDTSocket(args.server_name, args.port_number)
+    ## Create a connection socket for (server_name, port_number)
+    sock = RDTSocket(args.server_name, args.port_number, timeout=10)
 
-    sock.send("Hello, world!")
-    check_response(sock, "Hello, world!")
+    ## Oil check
+    sock.udt_send_and_wait(
+        "Hello, world!",
+        "Hello, world!"
+    )
 
     ## Name ourselves jlk-sender
-    sock.send("NAME jlk-sender")
-    check_response(sock, "OK Hello jlk-sender\n")
+    sock.udt_send_and_wait(
+        "NAME jlk-sender",
+        "OK Hello jlk-sender\n"
+    )
 
     if args.filenames is not None:
         source_file = args.filenames[0]
@@ -46,8 +51,7 @@ def main():
     ## Every 5 seconds, issue a LIST command to the server and look for a user named jlk-receiver.
 
     while True:
-        sock.send("LIST")
-        msg = sock.receive()
+        msg = sock.udt_send_and_wait("LIST")
         users = parse_users(msg)
 
         receiver = next((u for u in users if u['name'] == 'jlk-receiver'), None)
@@ -58,8 +62,10 @@ def main():
     ## Connect to jlk-receiver
 
     receiver_addr = receiver['ipaddr']
-    sock.send(f"CONN {receiver_addr}")
-    check_response(sock, f"OK Relaying to /{receiver_addr}\n")
+    sock.udt_send_and_wait(
+        f"CONN {receiver_addr}",
+        f"OK Relaying to /{receiver_addr}\n"
+    )
 
     ## Send metadata about the file
 
@@ -77,7 +83,7 @@ def main():
     if content_length is not None:
         metadata += [f"content_length: {content_length}"]
     metadata = '\n'.join(metadata)
-    sock.send(metadata)
+    sock.rdt_send(metadata)
 
     ## Send the contents of the file
 
@@ -86,26 +92,30 @@ def main():
         while True:
             try:
                 next_line = input()
-                sock.send(next_line)
+                sock.rdt_send(next_line)
             except KeyboardInterrupt:
                 break
     else:
         ## Send all of the contents at once
-        sock.send(file_contents, binary=True)
+        sock.rdt_send(file_contents)
     
     ## Send a special message to indicate EOF
 
-    sock.send(EOF_MARKER)
+    sock.rdt_send("<EOF>")
     
     ## Switch out of relay mode
 
-    sock.send(".")
-    check_response(sock, "OK Not relaying\n")
+    sock.udt_send_and_wait(
+        ".",
+        "OK Not relaying\n"
+    )
     
     ## Quit the session
 
-    sock.send("QUIT")
-    check_response(sock, "OK Bye\n")
+    sock.udt_send_and_wait(
+        "QUIT",
+        "OK Bye\n"
+    )
 
 if __name__ == '__main__':
     main()
