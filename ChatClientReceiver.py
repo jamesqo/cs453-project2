@@ -34,21 +34,36 @@ def main():
         "OK Hello jlk-receiver\n"
     )
 
-    ## Wait for a message from jlk-sender
+    ## Wait for metadata from jlk-sender
 
-    print("Receiving file metadata...")
-    msg = sock.rdt_receive().decode()
+    def setup_sender(msg):
+        print("Setting up connection to sender...")
+        metadata = parse_metadata(msg.decode())
+        sender_addr = metadata['sender_addr']
+        sock.udt_send_and_wait(
+            f"CONN {sender_addr}",
+            f"OK Relaying to /{sender_addr}\n"
+        )
+
+    print("Receiving metadata...")
+    # During the very first rdt_receive(), we need to tell the server to CONN to sender_addr
+    # before attempting to respond with an ACK, otherwise the ACK won't be relayed to the sender and it'll
+    # simply be echoed back to us.
+    # In the scenario where we receive a corrupted packet with a garbled IP address, we will fail to parse it.
+    # After not hearing back from us for a while, the sender will re-transmit the packet.
+    # It will continue doing this until it sends us an uncorrupted packet that we can parse and establish a connection with.
+    msg = sock.rdt_receive(setup_sender=setup_sender).decode()
     metadata = parse_metadata(msg)
 
-    ## Receive the contents of the file
-
-    print("Receiving file contents...")
     dest_file = metadata['dest_file']
     if dest_file == 'stdout':
         f = sys.stdout
     else:
         f = open(dest_file, 'wb')
-    
+
+    ## Receive the file contents
+
+    print("Receiving file contents...")    
     try:
         while True:
             msg = sock.rdt_receive().decode()

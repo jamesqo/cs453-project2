@@ -70,9 +70,14 @@ def main():
         f"OK Relaying to /{receiver_addr}\n"
     )
 
-    ## Send metadata about the file
+    ## Send metadata
 
-    print("Sending file metadata...")
+    print("Sending metadata...")
+    me = next((u for u in users if u['name'] == 'jlk-receiver'), None)
+    if me is None:
+        raise RuntimeError("Why don't I exist!?")
+    my_addr = me['ipaddr']
+
     file_contents = None
     content_length = None
     if source_file != 'stdin':
@@ -81,6 +86,7 @@ def main():
             content_length = len(file_contents)
 
     metadata = [
+        f"sender_addr: {my_addr}",
         f"source_file: {source_file}",
         f"dest_file: {dest_file}"
     ]

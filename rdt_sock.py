@@ -81,25 +81,32 @@ class RDTSocket:
     def rdt_send(self, message):
         packet = make_packet(seqnum=self.seqnum, data=message)
         while True:
-            self.udt_send_and_wait(packet)
+            self.udt_send(packet)
             ack = self.udt_receive()
             if ack == ACK:
-                self.flip_seqnum()
                 break
+        self.flip_seqnum()
     
     """
     Receives a message using the RDT protocol.
+    setup_sender is used to set up a connection to the sender when this function is called for the first time.
     """
-    def rdt_receive(self):
+    def rdt_receive(self, setup_sender=None):
+        # During the first time around, we don't try sending ACKs/NAKs back until the sender is set up properly.
+        firsttime = setup_sender is not None
+
         while True:
             packet = self.udt_receive()
             success, seqnum, data = extract_data(packet)
             if success:
                 if seqnum == self.seqnum:
                     break # Success!
-                self.udt_send_and_wait(ACK) # Sender is retransmitting an old packet
-            else:
-                self.udt_send_and_wait(NAK) # We received a corrupted packet
-        self.udt_send_and_wait(ACK)
+                if not firsttime:
+                    self.udt_send(ACK) # Sender is retransmitting an old packet
+            elif not firsttime:
+                self.udt_send(NAK) # We received a corrupted packet
+        if firsttime:
+            setup_sender(data)
+        self.udt_send(ACK)
         self.flip_seqnum()
         return data
