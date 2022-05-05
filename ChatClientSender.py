@@ -66,7 +66,7 @@ def main():
     file_contents = None
     content_length = None
     if source_file != 'stdin':
-        with open(source_file, 'rb', encoding='utf8') as f:
+        with open(source_file, 'rb') as f:
             file_contents = f.read()
             content_length = len(file_contents)
 
