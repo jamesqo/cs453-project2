@@ -1,5 +1,4 @@
 import argparse
-import socket
 import time
 
 from rdt_sock import RDTSocket
@@ -27,15 +26,17 @@ def main():
     args = parser.parse_args()
 
     ## Create a connection socket for (server_name, port_number)
-    sock = RDTSocket(args.server_name, args.port_number, timeout=10)
+    sock = RDTSocket(args.server_name, args.port_number) # timeout=10
 
     ## Oil check
+    print("Checking oil...")
     sock.udt_send_and_wait(
         "Hello, world!",
         "Hello, world!"
     )
 
     ## Name ourselves jlk-sender
+    print("Naming ourselves jlk-sender...")
     sock.udt_send_and_wait(
         "NAME jlk-sender",
         "OK Hello jlk-sender\n"
@@ -51,7 +52,8 @@ def main():
     ## Every 5 seconds, issue a LIST command to the server and look for a user named jlk-receiver.
 
     while True:
-        msg = sock.udt_send_and_wait("LIST")
+        print("Looking for receiver...")
+        msg = sock.udt_send_and_wait("LIST").decode()
         users = parse_users(msg)
 
         receiver = next((u for u in users if u['name'] == 'jlk-receiver'), None)
@@ -61,6 +63,7 @@ def main():
     
     ## Connect to jlk-receiver
 
+    print("Found receiver!")
     receiver_addr = receiver['ipaddr']
     sock.udt_send_and_wait(
         f"CONN {receiver_addr}",
@@ -69,6 +72,7 @@ def main():
 
     ## Send metadata about the file
 
+    print("Sending file metadata...")
     file_contents = None
     content_length = None
     if source_file != 'stdin':
@@ -87,6 +91,7 @@ def main():
 
     ## Send the contents of the file
 
+    print("Sending file contents...")
     if source_file == 'stdin':
         ## Send the contents of stdin line-by-line until Ctrl+C is pressed
         while True:
@@ -105,6 +110,7 @@ def main():
     
     ## Switch out of relay mode
 
+    print("Switching out of relay mode...")
     sock.udt_send_and_wait(
         ".",
         "OK Not relaying\n"
@@ -112,10 +118,13 @@ def main():
     
     ## Quit the session
 
+    print("Quitting...")
     sock.udt_send_and_wait(
         "QUIT",
         "OK Bye\n"
     )
+
+    print("Done.")
 
 if __name__ == '__main__':
     main()

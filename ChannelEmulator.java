@@ -449,7 +449,7 @@ public class ChannelEmulator {
 					if(args[i].equals("-LOSS") || args[i].equals("-L")) {LOSS = val;}
 					else if(args[i].equals("-DELAY") || args[i].equals("-D")) {DELAY = val;}
 					else if(args[i].equals("-DELAY_DEV_RATIO") || args[i].equals("-R")) {DELAY_DEV_RATIO = val;}
-					else if(args[i].equals("-CORRUPTION") || args[i].equals("-C")) {LOSS = val;}
+					else if(args[i].equals("-CORRUPTION") || args[i].equals("-C")) {CORRUPTION = val;}
 				}
 			} catch(NumberFormatException nfe) {
 				log.warning("Bad " + args[i] + " input, ignoring or using default value");

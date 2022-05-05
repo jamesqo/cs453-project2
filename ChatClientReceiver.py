@@ -18,15 +18,17 @@ def main():
     args = parser.parse_args()
 
     ## Create a connection socket for (server_name, port_number)
-    sock = RDTSocket(args.server_name, args.port_number, timeout=10)
+    sock = RDTSocket(args.server_name, args.port_number) # timeout=10
 
     ## Oil check
+    print("Checking oil...")
     sock.udt_send_and_wait(
         "Hello, world!",
         "Hello, world!"
     )
 
     ## Name ourselves jlk-receiver
+    print("Naming ourselves jlk-receiver...")
     sock.udt_send_and_wait(
         "NAME jlk-receiver",
         "OK Hello jlk-receiver\n"
@@ -34,11 +36,13 @@ def main():
 
     ## Wait for a message from jlk-sender
 
-    msg = sock.rdt_receive_text()
+    print("Receiving file metadata...")
+    msg = sock.rdt_receive().decode()
     metadata = parse_metadata(msg)
 
     ## Receive the contents of the file
 
+    print("Receiving file contents...")
     dest_file = metadata['dest_file']
     if dest_file == 'stdout':
         f = sys.stdout
@@ -47,7 +51,7 @@ def main():
     
     try:
         while True:
-            msg = sock.rdt_receive_text()
+            msg = sock.rdt_receive().decode()
 
             if msg.decode() == "<EOF>":
                 break
@@ -60,6 +64,7 @@ def main():
 
     ## Quit the session
 
+    print("Quitting...")
     sock.udt_send_and_wait(
         "QUIT",
         "OK Bye\n"

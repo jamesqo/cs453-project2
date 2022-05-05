@@ -9,6 +9,8 @@ NAK = b'nak'
 Creates an RDT packet from binary data, its MD5 checksum and a sequence number.
 """
 def make_packet(seqnum, data):
+    if isinstance(data, str):
+        data = data.encode()
     checksum = hashlib.md5(data).digest()
     return b'data|' + str(seqnum).encode() + b'|' + checksum + b'|' + data
 
@@ -18,14 +20,18 @@ Returns (success, seqnum, data) where success indicates successful extraction, s
 """
 def extract_data(packet):
     if not packet.startswith(DATA_PREFIX):
-        return False, None
+        return False, None, None
     packet = packet[len(DATA_PREFIX):]
 
-    seqnum = int(packet[0].decode())
+    seqnum = int(chr(packet[0]))
+    if seqnum not in (0, 1):
+        return False, None, None # Corrupted seqnum
+
     checksum = packet[2:18]
     data = packet[19:]
     if hashlib.md5(data).digest() != checksum:
-        return False, seqnum, None
+        return False, None, None # Corrupted data or checksum
+
     return True, seqnum, data
 
 class RDTSocket:
@@ -44,13 +50,13 @@ class RDTSocket:
     def udt_send(self, message):
         if isinstance(message, str):
             message = message.encode()
+        print(f"Sending: {repr(message)}")
         self.udp_sock.sendto(message, (self.server, self.port))
     
     def udt_receive(self):
-        return self.udp_sock.recv(self.bufsize)
-    
-    def udt_receive_text(self):
-        return self.udt_receive().decode()
+        message = self.udp_sock.recv(self.bufsize)
+        print(f"Receiving: {repr(message)}")
+        return message
     
     """
     Sends message and waits for server to respond, re-sending message as needed.
@@ -68,14 +74,14 @@ class RDTSocket:
             if response.decode() != expected_response:
                 print(f"WARNING: Expected response msg of '{expected_response}', but got '{response.decode()}'")
         return response
-    
+
     """
     Sends a message using the RDT protocol.
     """
     def rdt_send(self, message):
+        packet = make_packet(seqnum=self.seqnum, data=message)
         while True:
-            packet = make_packet(seqnum=self.seqnum, data=message)
-            self.udt_send(packet)
+            self.udt_send_and_wait(packet)
             ack = self.udt_receive()
             if ack == ACK:
                 self.flip_seqnum()
@@ -91,12 +97,9 @@ class RDTSocket:
             if success:
                 if seqnum == self.seqnum:
                     break # Success!
-                self.udt_send(ACK) # Sender is retransmitting an old packet
+                self.udt_send_and_wait(ACK) # Sender is retransmitting an old packet
             else:
-                self.udt_send(NAK) # We received a corrupted packet
-        self.udt_send(ACK)
+                self.udt_send_and_wait(NAK) # We received a corrupted packet
+        self.udt_send_and_wait(ACK)
         self.flip_seqnum()
         return data
-    
-    def rdt_receive_text(self):
-        return self.rdt_receive().decode()
