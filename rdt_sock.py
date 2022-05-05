@@ -5,17 +5,18 @@ DATA_PREFIX = b'data|'
 ACK = b'ack'
 NAK = b'nak'
 
-def make_packet(data):
+def make_packet(seqnum, data):
     checksum = hashlib.md5(data).digest()
-    return b'data|' + checksum + b'|' + data
+    return b'data|' + str(seqnum).encode() + b'|' + checksum + b'|' + data
 
 def extract_data(packet):
     if not packet.startswith(DATA_PREFIX):
         return False, None
     packet = packet[len(DATA_PREFIX):]
 
-    checksum = packet[:16]
-    data = packet[16+1:]
+    seqnum = int(packet[0].decode())
+    checksum = packet[2:18]
+    data = packet[19:]
     if hashlib.md5(data).digest() != checksum:
         return False, None
     return True, data
@@ -26,36 +27,42 @@ class RDTSocket:
         self.port = port
         self.bufsize = bufsize
         self.udp_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        self.seqnum = 0
     
-    def _send(self, message):
+    def udp_send(self, message):
         self.udp_sock.sendto(message, (self.server, self.port))
     
-    def receive_ack(self):
-        packet = self.udp_sock.recv(self.bufsize)
-        if packet == ACK or packet == NAK:
-            return packet
-        else:
-            raise Exception("Corrupted ACK or NAK!") # TODO: what do we do here?
+    def udp_receive(self):
+        return self.udp_sock.recv(self.bufsize)
+    
+    def flip_seqnum(self):
+        self.seqnum = (1 - self.seqnum)
     
     def send(self, message, binary=False):
         if not binary:
             print(f"Sending message: `{message}`")
             message = message.encode()
         while True:
-            self._send(message)
-            ack = self.receive_ack()
+            packet = make_packet(seqnum=self.seqnum, data=message)
+            self._send(packet)
+            ack = self.udp_receive()
             if ack == ACK:
+                self.flip_seqnum()
                 break
     
     def receive(self, binary=False):
         while True:
-            packet = self.udp_sock.recv(self.bufsize)
-            success, data = extract_data(packet)
+            packet = self.udp_receive()
+            success, seqnum, data = extract_data(packet)
             if success:
-                break
-            self._send(NAK)
+                if seqnum == self.seqnum:
+                    break # Success!
+                self._send(ACK) # Sender is retransmitting an old packet
+            else:
+                self._send(NAK) # We received a corrupted packet
         self._send(ACK)
+        self.flip_seqnum()
         if not binary:
-            ret = ret.decode()
-            print(f"Received message: `{ret}`")
-        return ret
+            data = data.decode()
+            print(f"Received message: `{data}`")
+        return data
