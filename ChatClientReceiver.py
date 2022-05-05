@@ -18,72 +18,87 @@ def main():
     args = parser.parse_args()
 
     ## Create a connection socket for (server_name, port_number)
-    sock = RDTSocket(args.server_name, args.port_number) # timeout=10
+    sock = RDTSocket(args.server_name, args.port_number)
 
-    ## Oil check
-    print("Checking oil...")
-    sock.udt_send_and_wait(
-        "Hello, world!",
-        "Hello, world!"
-    )
-
-    ## Name ourselves jlk-receiver
-    print("Naming ourselves jlk-receiver...")
-    sock.udt_send_and_wait(
-        "NAME jlk-receiver",
-        "OK Hello jlk-receiver\n"
-    )
-
-    ## Wait for metadata from jlk-sender
-
-    def setup_sender(msg):
-        print("Setting up connection to sender...")
-        metadata = parse_metadata(msg.decode())
-        sender_addr = metadata['sender_addr']
+    try:
+        ## Oil check
+        print("Checking oil...")
         sock.udt_send_and_wait(
-            f"CONN {sender_addr}",
-            f"OK Relaying to /{sender_addr}\n"
+            "Hello, world!",
+            "Hello, world!"
         )
 
-    print("Receiving metadata...")
-    # During the very first rdt_receive(), we need to tell the server to CONN to sender_addr
-    # before attempting to respond with an ACK, otherwise the ACK won't be relayed to the sender and it'll
-    # simply be echoed back to us.
-    # In the scenario where we receive a corrupted packet with a garbled IP address, we will fail to parse it.
-    # After not hearing back from us for a while, the sender will re-transmit the packet.
-    # It will continue doing this until it sends us an uncorrupted packet that we can parse and establish a connection with.
-    msg = sock.rdt_receive(setup_sender=setup_sender).decode()
-    metadata = parse_metadata(msg)
+        ## Name ourselves jlk-receiver
+        print("Naming ourselves jlk-receiver...")
+        sock.udt_send_and_wait(
+            "NAME jlk-receiver",
+            "OK Hello jlk-receiver\n"
+        )
 
-    dest_file = metadata['dest_file']
-    if dest_file == 'stdout':
-        f = sys.stdout
-    else:
-        f = open(dest_file, 'wb')
+        ## Wait for metadata from jlk-sender
 
-    ## Receive the file contents
+        def setup_sender(msg):
+            print("Setting up connection to sender...")
+            metadata = parse_metadata(msg.decode())
+            sender_addr = metadata['sender_addr']
+            # For debugging: flush out all of the messages currently in the queue
+            # It's possible that a bunch of metadata messages from the sender may have queued up.
+            sock.flush_pending_messages()
+            sock.udt_send_and_wait(
+                f"CONN {sender_addr}",
+                f"OK Relaying to /{sender_addr}\n"
+            )
 
-    print("Receiving file contents...")    
-    try:
-        while True:
-            msg = sock.rdt_receive().decode()
+        print("Receiving metadata...")
+        # During the very first rdt_receive(), we need to tell the server to CONN to sender_addr
+        # before attempting to respond with an ACK, otherwise the ACK won't be relayed to the sender and it'll
+        # simply be echoed back to us.
+        # In the scenario where we receive a corrupted packet with a garbled IP address, we will fail to parse it.
+        # After not hearing back from us for a while, the sender will re-transmit the packet.
+        # It will continue doing this until it sends us an uncorrupted packet that we can parse and establish a connection with.
+        msg = sock.rdt_receive(setup_sender=setup_sender).decode()
+        metadata = parse_metadata(msg)
 
-            if msg.decode() == "<EOF>":
-                break
+        dest_file = metadata['dest_file']
+        if dest_file == 'stdout':
+            f = sys.stdout
+        else:
+            f = open(dest_file, 'wb')
 
-            f.write(msg)
-    except:
-        if dest_file != 'stdout':
-            f.close()
-        raise
+        ## Receive the file contents
 
-    ## Quit the session
+        print("Receiving file contents...")    
+        try:
+            while True:
+                msg = sock.rdt_receive()
 
-    print("Quitting...")
-    sock.udt_send_and_wait(
-        "QUIT",
-        "OK Bye\n"
-    )
+                if msg.decode() == "<EOF>":
+                    break
+
+                f.write(msg)
+        finally:
+            if dest_file != 'stdout':
+                f.close()
+    finally:
+        sock.flush_pending_messages()
+
+        ## Switch out of relay mode
+
+        print("Switching out of relay mode...")
+        sock.udt_send_and_wait(
+            ".",
+            "OK Not relaying\n"
+        )
+
+        ## Quit the session
+
+        print("Quitting...")
+        sock.udt_send_and_wait(
+            "QUIT",
+            "OK Bye\n"
+        )
+
+    print("Done.")
 
 if __name__ == '__main__':
     main()

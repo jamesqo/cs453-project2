@@ -1,4 +1,5 @@
 import hashlib
+import select
 import socket
 
 DATA_PREFIX = b'data|'
@@ -23,8 +24,11 @@ def extract_data(packet):
         return False, None, None
     packet = packet[len(DATA_PREFIX):]
 
-    seqnum = int(chr(packet[0]))
-    if seqnum not in (0, 1):
+    if packet[0] == ord('0'):
+        seqnum = 0
+    elif packet[0] == ord('1'):
+        seqnum = 1
+    else:
         return False, None, None # Corrupted seqnum
 
     checksum = packet[2:18]
@@ -35,13 +39,13 @@ def extract_data(packet):
     return True, seqnum, data
 
 class RDTSocket:
-    def __init__(self, server, port, bufsize=2048, timeout=None):
+    def __init__(self, server, port, bufsize=2048, udt_timeout=None):
         self.server = server
         self.port = port
         self.bufsize = bufsize
         self.udp_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        if timeout is not None:
-            self.udp_sock.settimeout(timeout)
+        if udt_timeout is not None:
+            self.udp_sock.settimeout(udt_timeout)
         self.seqnum = 0
     
     def flip_seqnum(self):
@@ -60,7 +64,7 @@ class RDTSocket:
     
     """
     Sends message and waits for server to respond, re-sending message as needed.
-    Optionally verifies that the server's response matches the string expected_response.
+    Optionally verifies that the server's response matches the string expected_response, repeating if not.
     """
     def udt_send_and_wait(self, message, expected_response=None):
         while True:
@@ -68,11 +72,11 @@ class RDTSocket:
                 self.udt_send(message)
                 response = self.udt_receive()
                 break
-            except TimeoutError:
+            except socket.timeout:
                 continue
         if expected_response is not None:
-            if response.decode() != expected_response:
-                print(f"WARNING: Expected response msg of '{expected_response}', but got '{response.decode()}'")
+            if response != expected_response.encode():
+                print(f"WARNING: Expected response msg of {repr(expected_response)}, but got {repr(response)}")
         return response
 
     """
@@ -81,8 +85,12 @@ class RDTSocket:
     def rdt_send(self, message):
         packet = make_packet(seqnum=self.seqnum, data=message)
         while True:
-            self.udt_send(packet)
-            ack = self.udt_receive()
+            try:
+                self.udt_send(packet)
+                ack = self.udt_receive()
+            except socket.timeout:
+                continue
+
             if ack == ACK:
                 break
         self.flip_seqnum()
@@ -110,3 +118,11 @@ class RDTSocket:
         self.udt_send(ACK)
         self.flip_seqnum()
         return data
+    
+    def can_read(self):
+        rlist, _, _ = select.select([self.udp_sock], [], [], 0)
+        return len(rlist) > 0
+    
+    def flush_pending_messages(self):
+        while self.can_read():
+            _ = self.udt_receive()

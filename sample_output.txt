@@ -1,0 +1,3 @@
+Hello, good world!
+This is an example of
+Multi-line input.
